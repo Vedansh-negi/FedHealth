@@ -1,0 +1,18 @@
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+
+# Data and model artifacts
+*.csv
+*.joblib
+*.pkl
+*.pickle
+
+# Logs and local configuration
+logs/
+.DS_Store
