@@ -1,13 +1,7 @@
 import psycopg2
-from psycopg2.extensions import connection
-from config.database import DB_CONFIG
+
+from config.database import connection_kwargs
 
 
-def get_federated_connection() -> connection:
-    """Create and return a connection to the federated database."""
-    return psycopg2.connect(
-        host=DB_CONFIG["host"],
-        port=DB_CONFIG["port"],
-        user=DB_CONFIG["user"],
-        database="federated_db"
-    )
+def get_federated_connection():
+    return psycopg2.connect(**connection_kwargs("federated_db"))

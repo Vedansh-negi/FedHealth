@@ -13,6 +13,8 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 
+import os
+
 from psycopg2.extras import Json
 
 from database.hospital_db import get_hospital_connection
@@ -20,7 +22,15 @@ from database.federated_db import get_federated_connection
 from ml.model_config import FEATURE_COLUMNS, TARGET_COLUMN, MODEL_VERSION
 
 
-TEST_DATA_PATH = "/Users/vedanshnegi/Downloads/common_test.csv"
+# Held-out evaluation file. Set FEDHEALTH_TEST_DATA to override.
+TEST_DATA_PATH = os.getenv(
+    "FEDHEALTH_TEST_DATA",
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data",
+        "common_test.csv",
+    ),
+)
 
 
 def transform_features(df):
@@ -81,6 +91,13 @@ def run_comparison():
     print("=" * 60)
 
     # Load the common held-out test dataset.
+    if not os.path.isfile(TEST_DATA_PATH):
+        raise FileNotFoundError(
+            f"Held-out test file not found: {TEST_DATA_PATH}. "
+            "Put a CSV with the same columns as the training data there "
+            "(data/common_test.csv) or set FEDHEALTH_TEST_DATA."
+        )
+
     test_df = pd.read_csv(TEST_DATA_PATH)
     test_df.columns = [
         c.strip().lower().replace(" ", "").replace("-", "")
