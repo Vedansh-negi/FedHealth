@@ -17,6 +17,7 @@ from ml.model_config import (
     FEATURE_COLUMNS,
     MODEL_VERSION,
     get_config_fingerprint,
+    LEGACY_CONFIG_FINGERPRINT,
 )
 
 HOSPITAL_IDS = (1, 2, 3)
@@ -53,41 +54,47 @@ def create_federated_round(conn):
 
 def load_initial_global_model(conn):
     """
-    Continue from the latest compatible model if one exists.
-    If no compatible model exists, all hospitals start from zeros.
+    Load the latest compatible logreg-v2 global model.
+    If no v2 model exists, initialize a fresh model.
+    Existing v1 models are never used or modified.
     """
     expected_fingerprint = get_config_fingerprint()
+
     with conn.cursor() as cur:
-        cur.execute(
-            """
+        cur.execute("""
             SELECT weights, bias, config_fingerprint, model_version
             FROM global_models
-            WHERE config_fingerprint = %s
+            WHERE model_version LIKE 'logreg-v2%'
             ORDER BY global_model_id DESC
             LIMIT 1
-            """,
-            (expected_fingerprint,),
-        )
+        """)
         row = cur.fetchone()
 
     if row is None:
-        print("No compatible global model found; starting from zero parameters.")
+        print("No previous v2 model found. Initializing from zero parameters.")
         return np.zeros(len(FEATURE_COLUMNS), dtype=float), 0.0, None
 
     weights, bias, fingerprint, model_version = row
+
+    if fingerprint != expected_fingerprint:
+        raise ValueError(
+            "Previous v2 model has a different configuration fingerprint. "
+            "Refusing to continue with incompatible parameters."
+        )
+
     weights = np.asarray(weights, dtype=float)
     bias = float(bias)
 
-    if fingerprint != expected_fingerprint:
-        raise ValueError("Global model configuration fingerprint mismatch.")
     if weights.shape != (len(FEATURE_COLUMNS),):
-        raise ValueError("Stored global model has the wrong number of weights.")
-    if not np.isfinite(weights).all() or not math.isfinite(bias):
-        raise ValueError("Stored global model contains invalid parameters.")
+        raise ValueError(
+            f"Invalid global model weight shape: {weights.shape}"
+        )
 
-    print(f"Starting from previous global model: {model_version}")
+    if not np.all(np.isfinite(weights)) or not math.isfinite(bias):
+        raise ValueError("Previous global model contains non-finite parameters.")
+
+    print(f"Loaded previous global model: {model_version}")
     return weights, bias, model_version
-
 
 def validate_update(result, expected_fingerprint):
     if result["model_version"] != MODEL_VERSION:

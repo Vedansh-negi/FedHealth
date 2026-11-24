@@ -32,3 +32,10 @@ logs/
 
 # VS Code local settings
 .vscode/
+
+# Local backups
+*.backup
+*.pre_v2_backup
+
+# Local agent configuration
+.agents/

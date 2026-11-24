@@ -1,3 +1,4 @@
+
 import {
   BrowserRouter,
   Routes,
@@ -11,6 +12,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Patients from './pages/Patients'
 import Doctors from './pages/Doctors'
+import UserManagement from './pages/UserManagement'
 import Appointments from './pages/Appointments'
 import MedicalRecords from './pages/MedicalRecords'
 import Prescriptions from './pages/Prescriptions'
@@ -22,7 +24,7 @@ import DatabaseExplorer from './pages/DatabaseExplorer'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 
-import { getToken } from './services/api'
+import { getToken, getSavedUser } from './services/api'
 
 
 // ================= PROTECTED ROUTE =================
@@ -38,12 +40,29 @@ function ProtectedRoute({ children }) {
 }
 
 
+// ================= ADMIN-ONLY ROUTE =================
+
+function AdminRoute({ children }) {
+  const token = getToken()
+  const user = getSavedUser()
+
+  if (!token) {
+    return <Navigate to="/login" replace />
+  }
+
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />
+  }
+
+  return children
+}
+
+
 // ================= APP LAYOUT =================
 
 function AppLayout({ children }) {
   return (
     <div className="app-layout">
-
       <Sidebar />
 
       <div className="main-area">
@@ -51,7 +70,6 @@ function AppLayout({ children }) {
           {children}
         </div>
       </div>
-
     </div>
   )
 }
@@ -70,12 +88,24 @@ function ProtectedPage({ children }) {
 }
 
 
+// ================= ADMIN PROTECTED PAGE =================
+
+function AdminProtectedPage({ children }) {
+  return (
+    <AdminRoute>
+      <AppLayout>
+        {children}
+      </AppLayout>
+    </AdminRoute>
+  )
+}
+
+
 // ================= MAIN APP =================
 
 function App() {
   return (
     <BrowserRouter>
-
       <Routes>
 
         {/* Login */}
@@ -111,6 +141,16 @@ function App() {
             <ProtectedPage>
               <Doctors />
             </ProtectedPage>
+          }
+        />
+
+        {/* User Management - Admin Only */}
+        <Route
+          path="/users"
+          element={
+            <AdminProtectedPage>
+              <UserManagement />
+            </AdminProtectedPage>
           }
         />
 
@@ -214,16 +254,16 @@ function App() {
           }
         />
 
-        {/* Unknown routes */}
+        {/* Unknown Routes */}
         <Route
           path="*"
           element={<Navigate to="/" replace />}
         />
 
       </Routes>
-
     </BrowserRouter>
   )
 }
 
 export default App
+

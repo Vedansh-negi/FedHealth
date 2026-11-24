@@ -138,19 +138,13 @@ export const getPatients = (hospitalId = 1) => {
   return fetchAPI(`/api/patients/?hospital_id=${hospitalId}`)
 }
 
-export const getPatientById = (
-  patientId,
-  hospitalId = 1
-) => {
+export const getPatientById = (patientId, hospitalId = 1) => {
   return fetchAPI(
     `/api/patients/${patientId}?hospital_id=${hospitalId}`
   )
 }
 
-export const createPatient = (
-  patientData,
-  hospitalId = 1
-) => {
+export const createPatient = (patientData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/patients/?hospital_id=${hospitalId}`,
     'POST',
@@ -158,11 +152,7 @@ export const createPatient = (
   )
 }
 
-export const updatePatient = (
-  patientId,
-  patientData,
-  hospitalId = 1
-) => {
+export const updatePatient = (patientId, patientData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/patients/${patientId}?hospital_id=${hospitalId}`,
     'PUT',
@@ -170,10 +160,7 @@ export const updatePatient = (
   )
 }
 
-export const deletePatient = (
-  patientId,
-  hospitalId = 1
-) => {
+export const deletePatient = (patientId, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/patients/${patientId}?hospital_id=${hospitalId}`,
     'DELETE'
@@ -184,35 +171,25 @@ export const deletePatient = (
 
 // Fetch all doctors
 export const getDoctors = (hospitalId = 1) => {
-  return fetchAPI(
-    `/api/doctors/?hospital_id=${hospitalId}`
-  )
+  return fetchAPI(`/api/doctors/?hospital_id=${hospitalId}`)
 }
 
 // Fetch a single doctor
-export const getDoctorById = (
-  doctorId,
-  hospitalId = 1
-) => {
+export const getDoctorById = (doctorId, hospitalId = 1) => {
   return fetchAPI(
     `/api/doctors/${doctorId}?hospital_id=${hospitalId}`
   )
 }
 
 // Fetch departments for Add Doctor dropdown
-export const getDoctorDepartments = (
-  hospitalId = 1
-) => {
+export const getDoctorDepartments = (hospitalId = 1) => {
   return fetchAPI(
     `/api/doctors/departments?hospital_id=${hospitalId}`
   )
 }
 
 // Create a new doctor and user account
-export const createDoctor = (
-  doctorData,
-  hospitalId = 1
-) => {
+export const createDoctor = (doctorData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/doctors/?hospital_id=${hospitalId}`,
     'POST',
@@ -221,11 +198,7 @@ export const createDoctor = (
 }
 
 // Update doctor professional details
-export const updateDoctor = (
-  doctorId,
-  doctorData,
-  hospitalId = 1
-) => {
+export const updateDoctor = (doctorId, doctorData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/doctors/${doctorId}?hospital_id=${hospitalId}`,
     'PUT',
@@ -234,10 +207,7 @@ export const updateDoctor = (
 }
 
 // Delete doctor record
-export const deleteDoctor = (
-  doctorId,
-  hospitalId = 1
-) => {
+export const deleteDoctor = (doctorId, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/doctors/${doctorId}?hospital_id=${hospitalId}`,
     'DELETE'
@@ -260,10 +230,7 @@ export const getDatabaseTables = (hospitalId = 1) => {
   )
 }
 
-export const getTableData = (
-  tableName,
-  hospitalId = 1
-) => {
+export const getTableData = (tableName, hospitalId = 1) => {
   return fetchAPI(
     `/api/database/table/${tableName}?hospital_id=${hospitalId}`
   )
@@ -293,11 +260,17 @@ export const runFederatedRound = () => {
   return sendAPIRequest('/api/federated/run', 'POST')
 }
 
+// Fetch centralized vs federated comparison results
+export const getFederatedComparison = () => {
+  return fetchAPI('/api/federated/comparison')
+}
+
 // ================= AUDIT LOG API =================
 
 export const getAuditLogs = (limit = 100) => {
   return fetchAPI(`/api/audit-logs?limit=${limit}`)
 }
+
 // ================= APPOINTMENTS API =================
 
 // Fetch all appointments
@@ -308,20 +281,14 @@ export const getAppointments = (hospitalId = 1) => {
 }
 
 // Fetch a single appointment
-export const getAppointmentById = (
-  appointmentId,
-  hospitalId = 1
-) => {
+export const getAppointmentById = (appointmentId, hospitalId = 1) => {
   return fetchAPI(
     `/api/appointments/${appointmentId}?hospital_id=${hospitalId}`
   )
 }
 
 // Create a new appointment
-export const createAppointment = (
-  appointmentData,
-  hospitalId = 1
-) => {
+export const createAppointment = (appointmentData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/appointments/?hospital_id=${hospitalId}`,
     'POST',
@@ -343,15 +310,13 @@ export const updateAppointment = (
 }
 
 // Delete an appointment
-export const deleteAppointment = (
-  appointmentId,
-  hospitalId = 1
-) => {
+export const deleteAppointment = (appointmentId, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/appointments/${appointmentId}?hospital_id=${hospitalId}`,
     'DELETE'
   )
 }
+
 // ================= MEDICAL RECORDS API =================
 
 export const getMedicalRecords = (hospitalId = 1) => {
@@ -360,22 +325,16 @@ export const getMedicalRecords = (hospitalId = 1) => {
   )
 }
 
-export const getMedicalRecordById = (
-  recordId,
-  hospitalId = 1
-) => {
+export const getMedicalRecordById = (recordId, hospitalId = 1) => {
   return fetchAPI(
     `/api/medical-records/${recordId}?hospital_id=${hospitalId}`
   )
 }
 
-export const createMedicalRecord = (
-  recordData,
-  hospitalId = 1
-) => {
+export const createMedicalRecord = (recordData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/medical-records/?hospital_id=${hospitalId}`,
-    "POST",
+    'POST',
     recordData
   )
 }
@@ -387,20 +346,18 @@ export const updateMedicalRecord = (
 ) => {
   return sendAPIRequest(
     `/api/medical-records/${recordId}?hospital_id=${hospitalId}`,
-    "PUT",
+    'PUT',
     recordData
   )
 }
 
-export const deleteMedicalRecord = (
-  recordId,
-  hospitalId = 1
-) => {
+export const deleteMedicalRecord = (recordId, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/medical-records/${recordId}?hospital_id=${hospitalId}`,
-    "DELETE"
+    'DELETE'
   )
 }
+
 // ================= PRESCRIPTIONS API =================
 
 // Fetch all prescriptions
@@ -446,15 +403,13 @@ export const updatePrescription = (
 }
 
 // Delete a prescription
-export const deletePrescription = (
-  prescriptionId,
-  hospitalId = 1
-) => {
+export const deletePrescription = (prescriptionId, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/prescriptions/${prescriptionId}?hospital_id=${hospitalId}`,
     'DELETE'
   )
 }
+
 // ================= LAB ORDERS API =================
 
 export const getLabOrders = (hospitalId = 1) => {
@@ -463,19 +418,13 @@ export const getLabOrders = (hospitalId = 1) => {
   )
 }
 
-export const getLabOrderById = (
-  labOrderId,
-  hospitalId = 1
-) => {
+export const getLabOrderById = (labOrderId, hospitalId = 1) => {
   return fetchAPI(
     `/api/lab-orders/${labOrderId}?hospital_id=${hospitalId}`
   )
 }
 
-export const createLabOrder = (
-  labOrderData,
-  hospitalId = 1
-) => {
+export const createLabOrder = (labOrderData, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/lab-orders/?hospital_id=${hospitalId}`,
     'POST',
@@ -495,12 +444,50 @@ export const updateLabOrder = (
   )
 }
 
-export const deleteLabOrder = (
-  labOrderId,
-  hospitalId = 1
-) => {
+export const deleteLabOrder = (labOrderId, hospitalId = 1) => {
   return sendAPIRequest(
     `/api/lab-orders/${labOrderId}?hospital_id=${hospitalId}`,
     'DELETE'
   )
 }
+
+// ================= USER MANAGEMENT API =================
+
+// Fetch all users belonging to a hospital
+export const getUsers = (hospitalId = 1) => {
+  return fetchAPI(
+    `/api/users/?hospital_id=${hospitalId}`
+  )
+}
+
+// Create a new user account
+export const createUser = (userData, hospitalId = 1) => {
+  return sendAPIRequest(
+    `/api/users/?hospital_id=${hospitalId}`,
+    'POST',
+    userData
+  )
+}
+
+// Update user details
+export const updateUser = (userId, userData, hospitalId = 1) => {
+  return sendAPIRequest(
+    `/api/users/${userId}?hospital_id=${hospitalId}`,
+    'PUT',
+    userData
+  )
+}
+
+// Activate or deactivate a user account
+export const updateUserStatus = (
+  userId,
+  isActive,
+  hospitalId = 1
+) => {
+  return sendAPIRequest(
+    `/api/users/${userId}/status?hospital_id=${hospitalId}`,
+    'PATCH',
+    { is_active: isActive }
+  )
+}
+

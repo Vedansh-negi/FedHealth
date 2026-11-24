@@ -56,7 +56,7 @@ from app.api.routes.medical_records import router as medical_records_router
 from app.api.routes.os_monitoring import router as os_router
 from app.api.routes.patients import router as patients_router
 from app.api.routes.prescriptions import router as prescriptions_router
-
+from app.api.routes.users import router as users_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,7 +92,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"]
 )
 
@@ -186,6 +186,10 @@ STAFF = (ADMIN, DOCTOR, NURSE)
 FRONT_DESK = (ADMIN, RECEPTIONIST, DOCTOR, NURSE)
 
 app.include_router(auth_router)
+app.include_router(
+    users_router,
+    dependencies=[Depends(require_roles(ADMIN))]
+)
 
 # Patients, doctors and appointments also check hospital scope inside the
 # router; the dependencies here add role rules per HTTP method.

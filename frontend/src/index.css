@@ -2868,3 +2868,37 @@ button {
     padding: 16px;
   }
 }
+
+/* ================= USER MANAGEMENT ================= */
+
+.user-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.user-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 11px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.user-status.active {
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.user-status.inactive {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.user-role svg {
+  opacity: 0.7;
+}
+

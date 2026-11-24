@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta
 
 from database.federated_db import get_federated_connection
@@ -9,7 +10,21 @@ def save_process_logs(
     scheduling_unit="seconds",
     time_quantum=None,
 ):
-    """Persist scheduler results without mixing simulated units with seconds."""
+    """
+    Persist scheduler results in the central OS process log.
+
+    Supports:
+    - seconds: standalone OS scheduling demonstrations
+    - mini_batches: federated hospital training scheduling
+    """
+    if scheduling_unit not in ("seconds", "mini_batches"):
+        raise ValueError(
+            "scheduling_unit must be 'seconds' or 'mini_batches'."
+        )
+
+    if not results:
+        return
+
     conn = get_federated_connection()
     base_time = datetime.now()
 
@@ -26,15 +41,18 @@ def save_process_logs(
                     completion_time = base_time + timedelta(
                         seconds=process["completion_time"]
                     )
-                    waiting_seconds = process["waiting_time"]
-                    turnaround_seconds = process["turnaround_time"]
-                    response_seconds = process["response_time"]
+
+                    waiting_seconds = process.get("waiting_time")
+                    turnaround_seconds = process.get("turnaround_time")
+                    response_seconds = process.get("response_time")
+
                 else:
-                    # These timestamps identify the recorded run. Scheduler
-                    # metrics are stored separately in their declared unit.
+                    # These timestamps identify the recorded run.
+                    # Scheduler metrics are stored in their declared unit.
                     arrival_time = base_time
                     start_time = base_time
                     completion_time = base_time
+
                     waiting_seconds = None
                     turnaround_seconds = None
                     response_seconds = None
@@ -61,8 +79,8 @@ def save_process_logs(
                         time_quantum_units
                     )
                     VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     (
@@ -95,3 +113,4 @@ def save_process_logs(
 
     finally:
         conn.close()
+

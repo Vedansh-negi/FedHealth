@@ -10,9 +10,18 @@ FEATURE_COLUMNS = [
 ]
 
 TARGET_COLUMN = "diabetes_binary"
+MODEL_VERSION = "logreg-v2"
 
+# Actual configuration used by local_training.py
 MODEL_CONFIG = {
     "model_type": "LogisticRegression",
+    "optimization": "mini_batch_gradient_descent",
+    "epochs": 300,
+    "batch_size": 1024,
+    "learning_rate": 0.40,
+    "l2_strength": 0.0001,
+    "random_seed": 42,
+    "class_weight": "balanced",
     "features": FEATURE_COLUMNS,
     "target": TARGET_COLUMN,
     "scaling": {
@@ -24,17 +33,15 @@ MODEL_CONFIG = {
         "education": "(value-1)/5",
         "income": "(value-1)/7",
     },
-    "class_weight": "balanced",
-    "solver": "lbfgs",
-    "max_iter": 1000,
-    "random_state": 42,
 }
-
-MODEL_VERSION = "logreg-v1"
-
 
 def get_config_fingerprint():
     config_json = json.dumps(MODEL_CONFIG, sort_keys=True)
     return hashlib.sha256(
         config_json.encode("utf-8")
     ).hexdigest()
+
+# Fingerprint of the original configuration used by rounds 2–4.
+LEGACY_CONFIG_FINGERPRINT = (
+    "4c85d4513b615183b51381dffb6dd7880f602d4dd0368e1fbf53e53ea5ca93a2"
+)

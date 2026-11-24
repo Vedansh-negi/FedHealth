@@ -1,9 +1,10 @@
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg2.extras import RealDictCursor
 
-from app.core.security import ADMIN, DOCTOR, require_roles
+from app.core.security import ADMIN, require_roles
 from database.federated_db import get_federated_connection
 from os_layer.resource_monitor import get_resource_usage, save_resource_usage
 
@@ -13,7 +14,7 @@ logger = logging.getLogger("fedhealth.os")
 router = APIRouter(
     prefix="/api/os",
     tags=["OS Monitoring"],
-    dependencies=[Depends(require_roles(ADMIN, DOCTOR))]
+    dependencies=[Depends(require_roles(ADMIN))]
 )
 
 
@@ -28,8 +29,6 @@ def os_metrics():
             detail="Unable to fetch OS monitoring data"
         )
 
-    # The snapshot is also stored for the history view; if the database is
-    # down the live numbers are still returned.
     try:
         save_resource_usage(usage)
     except Exception:
@@ -90,10 +89,13 @@ def os_history(limit: int = Query(20, ge=1, le=500)):
 
 @router.get("/processes")
 def os_processes(limit: int = Query(50, ge=1, le=500)):
-    """Return recent process-scheduling records, including FedAvg hospital jobs."""
+    """Return recent process-scheduling records, including hospital jobs."""
+
     connection = None
+
     try:
         connection = get_federated_connection()
+
         with connection.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(
                 """
@@ -114,16 +116,24 @@ def os_processes(limit: int = Query(50, ge=1, le=500)):
                 ORDER BY created_at DESC, process_log_id DESC
                 LIMIT %s
                 """,
-                (limit,),
+                (limit,)
             )
+
             records = cursor.fetchall()
-        return {"total_records": len(records), "processes": records}
+
+        return {
+            "total_records": len(records),
+            "processes": records
+        }
+
     except Exception:
         logger.exception("OS process history failed")
         raise HTTPException(
             status_code=500,
-            detail="Unable to fetch OS process history",
+            detail="Unable to fetch OS process history"
         )
+
     finally:
         if connection:
             connection.close()
+

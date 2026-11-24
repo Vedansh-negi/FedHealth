@@ -19,16 +19,17 @@ from ml.model_config import (
     FEATURE_COLUMNS,
     TARGET_COLUMN,
     MODEL_VERSION,
+    MODEL_CONFIG,
     get_config_fingerprint,
 )
 
-LOCAL_EPOCHS = 5
-BATCH_SIZE = 1024
-LEARNING_RATE = 0.05
-L2_STRENGTH = 0.001
-RANDOM_SEED = 42
-
-
+# Small-batch gradient descent makes it possible to start every hospital
+# from the same global coefficients and perform genuine local FedAvg updates.
+LOCAL_EPOCHS = MODEL_CONFIG["epochs"]
+BATCH_SIZE = MODEL_CONFIG["batch_size"]
+LEARNING_RATE = MODEL_CONFIG["learning_rate"]
+L2_STRENGTH = MODEL_CONFIG["l2_strength"]
+RANDOM_SEED = MODEL_CONFIG["random_seed"]
 def transform_features(df):
     """Use exactly the same fixed transformations at every hospital."""
     X = df[FEATURE_COLUMNS].astype(float).copy()

@@ -5,7 +5,7 @@ from psycopg2.extras import RealDictCursor
 
 from database.federated_db import get_federated_connection
 from database.hospital_db import HOSPITAL_IDS, get_hospital_connection
-
+from ml.model_config import MODEL_VERSION, get_config_fingerprint
 
 logger = logging.getLogger("fedhealth.dashboard")
 
@@ -21,7 +21,6 @@ def hospital_counts():
 
     for hospital_id in HOSPITAL_IDS:
         connection = None
-
         try:
             connection = get_hospital_connection(hospital_id)
 
@@ -35,15 +34,23 @@ def hospital_counts():
                 cursor.execute("SELECT COUNT(*) AS total FROM appointments")
                 appointments = cursor.fetchone()["total"]
 
+                cursor.execute(
+                    "SELECT COUNT(*) AS total FROM patient_health_data"
+                )
+                ml_dataset_records = cursor.fetchone()["total"]
+
             stats.append({
                 "hospital_id": hospital_id,
                 "patients": patients,
                 "doctors": doctors,
-                "appointments": appointments
+                "appointments": appointments,
+                "ml_dataset_records": ml_dataset_records
             })
 
         except Exception:
-            logger.exception("Dashboard stats failed for hospital %s", hospital_id)
+            logger.exception(
+                "Dashboard stats failed for hospital %s", hospital_id
+            )
             stats.append({
                 "hospital_id": hospital_id,
                 "error": "Statistics unavailable"
@@ -54,7 +61,6 @@ def hospital_counts():
                 connection.close()
 
     return stats
-
 
 def federated_overview():
     """Completed round count and metrics of the latest evaluated model."""
@@ -69,23 +75,28 @@ def federated_overview():
                 "WHERE status = 'COMPLETED'"
             )
             rounds = cursor.fetchone()["total"]
-
             cursor.execute(
                 """
                 SELECT
-                    gm.model_version,
-                    fr.round_number,
-                    gm.accuracy,
-                    gm.precision_score,
-                    gm.recall_score,
-                    gm.f1_score,
-                    gm.created_at
+                     gm.model_version,
+                     fr.round_number,
+                     gm.accuracy,
+                     gm.precision_score,
+                     gm.recall_score,
+                     gm.f1_score,
+                     gm.created_at
                 FROM global_models gm
                 LEFT JOIN federated_rounds fr
-                    ON fr.round_id = gm.round_id
+                     ON fr.round_id = gm.round_id
+                WHERE gm.model_version LIKE %s
+                     AND gm.config_fingerprint = %s
                 ORDER BY gm.global_model_id DESC
                 LIMIT 1
-                """
+                """,
+                (
+                    f"{MODEL_VERSION}%",
+                    get_config_fingerprint(),
+                )
             )
             model = cursor.fetchone()
 

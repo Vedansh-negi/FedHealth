@@ -1,3 +1,4 @@
+
 import logging
 import threading
 
@@ -23,39 +24,65 @@ _training_lock = threading.Lock()
 STALE_AFTER_MINUTES = 30
 
 
+def _safe_audit(hospital_id, user_id, action):
+    try:
+        log_audit(
+            hospital_id,
+            user_id,
+            action,
+            "federated_round"
+        )
+    except Exception:
+        logger.exception("Failed to write audit event: %s", action)
+
+
 def _run_training_job(user_id, hospital_id):
-    """Run one protected federated training job."""
+    """Run one protected federated training job followed by evaluation."""
 
     try:
         from ml.federated_learning import run_federated_round
         from ml.evaluate_global_model import evaluate_global_model
 
-        run_federated_round()
+        # Stage 1: Federated training
+        try:
+            run_federated_round()
+        except Exception:
+            logger.exception("Federated training failed")
+            _safe_audit(
+                hospital_id,
+                user_id,
+                "FEDERATED_ROUND_FAILED"
+            )
+            return
 
+        # Stage 2: Global model evaluation
         try:
             evaluate_global_model()
         except Exception:
-            logger.exception("Evaluation after training failed")
+            logger.exception(
+                "Training completed, but global model evaluation failed"
+            )
+            _safe_audit(
+                hospital_id,
+                user_id,
+                "FEDERATED_TRAINING_COMPLETED_EVALUATION_FAILED"
+            )
+            return
 
-        log_audit(
+        # Both stages succeeded
+        _safe_audit(
             hospital_id,
             user_id,
-            "FEDERATED_ROUND_COMPLETED",
-            "federated_round"
+            "FEDERATED_ROUND_COMPLETED"
         )
 
     except Exception:
-        logger.exception("Federated training failed")
-
-        try:
-            log_audit(
-                hospital_id,
-                user_id,
-                "FEDERATED_ROUND_FAILED",
-                "federated_round"
-            )
-        except Exception:
-            logger.exception("Failed to write training failure audit")
+        logger.exception("Unexpected federated training job failure")
+        _safe_audit(
+            hospital_id,
+            user_id,
+            "FEDERATED_ROUND_FAILED"
+        )
 
     finally:
         _training_lock.release()
@@ -72,7 +99,6 @@ def _running_round(cursor):
         """,
         (STALE_AFTER_MINUTES,)
     )
-
     return cursor.fetchone()
 
 
@@ -108,8 +134,8 @@ def federated_summary(limit: int = Query(10, ge=1, le=50)):
                 """,
                 (limit,)
             )
-            rounds = cursor.fetchall()
 
+            rounds = cursor.fetchall()
             latest_round_id = rounds[0]["round_id"] if rounds else None
             hospital_updates = []
 
@@ -137,7 +163,9 @@ def federated_summary(limit: int = Query(10, ge=1, le=50)):
 
         return {
             "total_rounds": len(rounds),
-            "training_in_progress": bool(running) or _training_lock.locked(),
+            "training_in_progress": (
+                bool(running) or _training_lock.locked()
+            ),
             "rounds": rounds,
             "latest_hospital_updates": hospital_updates
         }
@@ -154,13 +182,80 @@ def federated_summary(limit: int = Query(10, ge=1, le=50)):
             connection.close()
 
 
+@router.get(
+    "/comparison",
+    dependencies=[Depends(require_roles(ADMIN, DOCTOR))]
+)
+def federated_comparison():
+    connection = None
+
+    try:
+        connection = get_federated_connection()
+
+        with connection.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(
+                """
+                SELECT comparison_run
+                FROM model_comparison
+                ORDER BY comparison_id DESC
+                LIMIT 1
+                """
+            )
+
+            latest = cursor.fetchone()
+
+            if not latest:
+                return {
+                    "comparison_run": None,
+                    "results": []
+                }
+
+            comparison_run = latest["comparison_run"]
+
+            cursor.execute(
+                """
+                SELECT
+                    model_name,
+                    accuracy,
+                    precision_score AS precision,
+                    recall_score AS recall,
+                    f1_score,
+                    roc_auc,
+                    evaluation_set
+                FROM model_comparison
+                WHERE comparison_run = %s
+                ORDER BY comparison_id
+                """,
+                (comparison_run,)
+            )
+
+            results = cursor.fetchall()
+
+        return {
+            "comparison_run": comparison_run,
+            "results": results
+        }
+
+    except Exception:
+        logger.exception("Federated comparison retrieval failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to load model comparison results"
+        )
+
+    finally:
+        if connection:
+            connection.close()
+
+
 @router.post("/run", status_code=202)
 def start_federated_round(
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(require_roles(ADMIN, DOCTOR))
+    current_user: dict = Depends(require_roles(ADMIN))
 ):
-    """Start one protected federated training round."""
+    """Start one federated round in the background (admin only)."""
 
+    # Acquire the lock before scheduling the background task.
     if not _training_lock.acquire(blocking=False):
         raise HTTPException(
             status_code=409,
@@ -195,6 +290,7 @@ def start_federated_round(
             current_user["hospital_id"]
         )
 
+        # The background job now owns responsibility for releasing the lock.
         lock_transferred = True
 
         return {
@@ -206,7 +302,6 @@ def start_federated_round(
 
     except Exception:
         logger.exception("Could not start federated training")
-
         raise HTTPException(
             status_code=503,
             detail="Unable to start federated training"
@@ -218,3 +313,4 @@ def start_federated_round(
 
         if not lock_transferred:
             _training_lock.release()
+
