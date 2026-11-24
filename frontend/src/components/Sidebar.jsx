@@ -61,7 +61,7 @@ function Sidebar() {
     {
       name: 'OS Monitoring',
       path: '/os-monitoring',
-      roles: ['admin'],
+      roles: ['admin' , 'doctor'],
       icon: '⚙️'
     },
     {

@@ -1,3 +1,5 @@
+
+import math
 import time
 from datetime import datetime
 
@@ -20,8 +22,6 @@ from ml.model_config import (
     get_config_fingerprint,
 )
 
-# Small-batch gradient descent makes it possible to start every hospital
-# from the same global coefficients and perform genuine local FedAvg updates.
 LOCAL_EPOCHS = 5
 BATCH_SIZE = 1024
 LEARNING_RATE = 0.05
@@ -46,30 +46,39 @@ def sigmoid(logits):
     """Numerically stable sigmoid."""
     logits = np.asarray(logits, dtype=float)
     probabilities = np.empty_like(logits)
+
     positive = logits >= 0
-    probabilities[positive] = 1.0 / (1.0 + np.exp(-logits[positive]))
+    probabilities[positive] = 1.0 / (
+        1.0 + np.exp(-logits[positive])
+    )
+
     exp_values = np.exp(logits[~positive])
-    probabilities[~positive] = exp_values / (1.0 + exp_values)
+    probabilities[~positive] = (
+        exp_values / (1.0 + exp_values)
+    )
+
     return probabilities
 
 
-def train_local_model(
+def prepare_local_training(
     hospital_id,
     round_number=1,
     initial_weights=None,
     initial_bias=0.0,
     local_epochs=LOCAL_EPOCHS,
 ):
-    """
-    Train one hospital's model starting from the supplied global parameters.
-    Only the resulting weights and bias are returned to the aggregator.
-    """
+    """Load and prepare one hospital's local task for cooperative scheduling."""
+
+    if local_epochs <= 0:
+        raise ValueError("local_epochs must be greater than zero.")
+
     print("\n" + "=" * 50)
-    print(f"Starting local training - Hospital {hospital_id}")
+    print(f"Preparing local training - Hospital {hospital_id}")
     print(f"Federated Round: {round_number}")
     print("=" * 50)
 
     conn = get_hospital_connection(hospital_id)
+
     try:
         query = f"""
             SELECT {", ".join(FEATURE_COLUMNS)}, {TARGET_COLUMN}
@@ -80,8 +89,11 @@ def train_local_model(
         conn.close()
 
     print(f"Records loaded: {len(df)}")
+
     if df.empty:
-        raise ValueError(f"Hospital {hospital_id} has no training records.")
+        raise ValueError(
+            f"Hospital {hospital_id} has no training records."
+        )
 
     X = transform_features(df).to_numpy(dtype=np.float64)
     y = df[TARGET_COLUMN].astype(int).to_numpy(dtype=np.float64)
@@ -95,10 +107,15 @@ def train_local_model(
     )
 
     feature_count = X_train.shape[1]
+
     if initial_weights is None:
         weights = np.zeros(feature_count, dtype=np.float64)
     else:
-        weights = np.asarray(initial_weights, dtype=np.float64).copy()
+        weights = np.asarray(
+            initial_weights,
+            dtype=np.float64
+        ).copy()
+
         if weights.shape != (feature_count,):
             raise ValueError(
                 f"Initial model has {weights.size} weights; "
@@ -106,118 +123,262 @@ def train_local_model(
             )
 
     bias = float(initial_bias)
-    if not np.isfinite(weights).all() or not np.isfinite(bias):
-        raise ValueError("Initial global parameters contain invalid values.")
 
-    # Balanced class weights are calculated locally from this hospital's
-    # training subset. They are used only during local optimization.
-    positive_count = max(float(np.sum(y_train == 1)), 1.0)
-    negative_count = max(float(np.sum(y_train == 0)), 1.0)
+    if not np.isfinite(weights).all() or not np.isfinite(bias):
+        raise ValueError(
+            "Initial global parameters contain invalid values."
+        )
+
+    positive_count = max(
+        float(np.sum(y_train == 1)), 1.0
+    )
+    negative_count = max(
+        float(np.sum(y_train == 0)), 1.0
+    )
+
     positive_weight = len(y_train) / (2.0 * positive_count)
     negative_weight = len(y_train) / (2.0 * negative_count)
-    sample_weights = np.where(y_train == 1, positive_weight, negative_weight)
 
-    rng = np.random.default_rng(RANDOM_SEED + hospital_id + round_number * 100)
-    start_time = time.perf_counter()
+    sample_weights = np.where(
+        y_train == 1,
+        positive_weight,
+        negative_weight
+    )
 
-    for epoch in range(local_epochs):
-        order = rng.permutation(len(y_train))
-        X_shuffled = X_train[order]
-        y_shuffled = y_train[order]
-        sw_shuffled = sample_weights[order]
+    batches_per_epoch = math.ceil(
+        len(y_train) / BATCH_SIZE
+    )
 
-        for start in range(0, len(y_train), BATCH_SIZE):
-            end = min(start + BATCH_SIZE, len(y_train))
-            xb = X_shuffled[start:end]
-            yb = y_shuffled[start:end]
-            sw = sw_shuffled[start:end]
+    return {
+        "hospital_id": hospital_id,
+        "round_number": round_number,
+        "X_train": X_train,
+        "y_train": y_train,
+        "X_val": X_val,
+        "y_val": y_val,
+        "sample_weights": sample_weights,
+        "weights": weights,
+        "bias": bias,
+        "local_epochs": local_epochs,
+        "batches_per_epoch": batches_per_epoch,
+        "total_batches": batches_per_epoch * local_epochs,
+        "epoch": 0,
+        "batch_order": None,
+        "batch_start": 0,
+        "rng": np.random.default_rng(
+            RANDOM_SEED + hospital_id + round_number * 100
+        ),
+        "training_compute_seconds": 0.0,
+        "started_at": datetime.now(),
+        "completed_batches": 0,
+    }
 
-            probabilities = sigmoid(xb @ weights + bias)
-            errors = (probabilities - yb) * sw
-            denominator = max(float(np.sum(sw)), 1.0)
 
-            grad_weights = (xb.T @ errors) / denominator
-            grad_weights += L2_STRENGTH * weights
-            grad_bias = float(np.sum(errors) / denominator)
+def train_one_local_batch(task):
+    """Execute exactly one mini-batch; return False when task is complete."""
 
-            weights -= LEARNING_RATE * grad_weights
-            bias -= LEARNING_RATE * grad_bias
+    if task["completed_batches"] >= task["total_batches"]:
+        return False
 
-    training_time = time.perf_counter() - start_time
+    if (
+        task["batch_order"] is None
+        or task["batch_start"] >= len(task["batch_order"])
+    ):
+        task["epoch"] += 1
+        task["batch_order"] = task["rng"].permutation(
+            len(task["y_train"])
+        )
+        task["batch_start"] = 0
 
-    val_prob = np.clip(sigmoid(X_val @ weights + bias), 1e-7, 1 - 1e-7)
+    start = task["batch_start"]
+    end = min(start + BATCH_SIZE, len(task["y_train"]))
+
+    indices = task["batch_order"][start:end]
+
+    xb = task["X_train"][indices]
+    yb = task["y_train"][indices]
+    sw = task["sample_weights"][indices]
+
+    compute_started = time.perf_counter()
+
+    probabilities = sigmoid(
+        xb @ task["weights"] + task["bias"]
+    )
+
+    errors = (probabilities - yb) * sw
+    denominator = max(float(np.sum(sw)), 1.0)
+
+    grad_weights = (xb.T @ errors) / denominator
+    grad_weights += L2_STRENGTH * task["weights"]
+
+    grad_bias = float(np.sum(errors) / denominator)
+
+    task["weights"] -= LEARNING_RATE * grad_weights
+    task["bias"] -= LEARNING_RATE * grad_bias
+
+    task["training_compute_seconds"] += (
+        time.perf_counter() - compute_started
+    )
+
+    task["batch_start"] = end
+    task["completed_batches"] += 1
+
+    return True
+
+
+def finalize_local_training(task):
+    """Evaluate and persist a completed local task."""
+
+    if task["completed_batches"] != task["total_batches"]:
+        raise RuntimeError(
+            f"Hospital {task['hospital_id']} training is not complete."
+        )
+
+    val_prob = np.clip(
+        sigmoid(
+            task["X_val"] @ task["weights"] + task["bias"]
+        ),
+        1e-7,
+        1 - 1e-7,
+    )
+
     val_pred = (val_prob >= 0.5).astype(int)
 
-    accuracy = accuracy_score(y_val, val_pred)
-    precision = precision_score(y_val, val_pred, zero_division=0)
-    recall = recall_score(y_val, val_pred, zero_division=0)
-    f1 = f1_score(y_val, val_pred, zero_division=0)
-    loss = log_loss(y_val, val_prob, labels=[0, 1])
+    accuracy = accuracy_score(task["y_val"], val_pred)
+
+    precision = precision_score(
+        task["y_val"],
+        val_pred,
+        zero_division=0
+    )
+
+    recall = recall_score(
+        task["y_val"],
+        val_pred,
+        zero_division=0
+    )
+
+    f1 = f1_score(
+        task["y_val"],
+        val_pred,
+        zero_division=0
+    )
+
+    loss = log_loss(
+        task["y_val"],
+        val_prob,
+        labels=[0, 1]
+    )
 
     now = datetime.now()
-    conn = get_hospital_connection(hospital_id)
+
+    conn = get_hospital_connection(task["hospital_id"])
+
     try:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
                 INSERT INTO training_runs (
-                    round_number, model_version, sample_count, accuracy,
-                    precision_score, recall_score, f1_score, loss,
-                    training_time_seconds, started_at, completed_at, status
+                    round_number,
+                    model_version,
+                    sample_count,
+                    accuracy,
+                    precision_score,
+                    recall_score,
+                    f1_score,
+                    loss,
+                    training_time_seconds,
+                    started_at,
+                    completed_at,
+                    status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s
+                )
                 """,
                 (
-                    round_number,
+                    task["round_number"],
                     f"{MODEL_VERSION}-fedavg",
-                    len(X_train),
+                    len(task["y_train"]),
                     accuracy,
                     precision,
                     recall,
                     f1,
                     loss,
-                    training_time,
+                    task["training_compute_seconds"],
+                    task["started_at"],
                     now,
-                    datetime.now(),
                     "COMPLETED",
                 ),
             )
+
         conn.commit()
+
     except Exception:
         conn.rollback()
         raise
+
     finally:
         conn.close()
 
     print("\nLocal Training Results")
     print("-" * 30)
-    print(f"Training samples : {len(X_train)}")
-    print(f"Validation samples: {len(X_val)}")
-    print(f"Accuracy         : {accuracy:.4f}")
-    print(f"Precision        : {precision:.4f}")
-    print(f"Recall           : {recall:.4f}")
-    print(f"F1 Score         : {f1:.4f}")
-    print(f"Log Loss         : {loss:.4f}")
-    print(f"Training time    : {training_time:.3f} seconds")
-    print(f"Local epochs     : {local_epochs}")
-    print(f"Starting global bias: {initial_bias:.6f}")
-    print(f"Updated local bias : {bias:.6f}")
+    print(f"Hospital          : {task['hospital_id']}")
+    print(f"Training samples  : {len(task['y_train'])}")
+    print(f"Validation samples: {len(task['y_val'])}")
+    print(f"Accuracy          : {accuracy:.4f}")
+    print(f"Precision         : {precision:.4f}")
+    print(f"Recall            : {recall:.4f}")
+    print(f"F1 Score          : {f1:.4f}")
+    print(f"Log Loss          : {loss:.4f}")
+    print(
+        f"Training compute  : "
+        f"{task['training_compute_seconds']:.3f} seconds"
+    )
+    print(f"Local epochs      : {task['local_epochs']}")
+    print(f"Updated local bias: {task['bias']:.6f}")
 
     return {
-        "hospital_id": hospital_id,
-        "round_number": round_number,
-        "sample_count": len(X_train),
-        "weights": weights.tolist(),
-        "bias": float(bias),
+        "hospital_id": task["hospital_id"],
+        "round_number": task["round_number"],
+        "sample_count": len(task["y_train"]),
+        "weights": task["weights"].tolist(),
+        "bias": float(task["bias"]),
         "accuracy": float(accuracy),
         "precision": float(precision),
         "recall": float(recall),
         "f1_score": float(f1),
         "loss": float(loss),
-        "training_time_seconds": float(training_time),
+        "training_time_seconds": float(
+            task["training_compute_seconds"]
+        ),
         "model_version": MODEL_VERSION,
         "config_fingerprint": get_config_fingerprint(),
     }
+
+
+def train_local_model(
+    hospital_id,
+    round_number=1,
+    initial_weights=None,
+    initial_bias=0.0,
+    local_epochs=LOCAL_EPOCHS,
+):
+    """Backward-compatible standalone training using the same mini-batch steps."""
+
+    task = prepare_local_training(
+        hospital_id=hospital_id,
+        round_number=round_number,
+        initial_weights=initial_weights,
+        initial_bias=initial_bias,
+        local_epochs=local_epochs,
+    )
+
+    while train_one_local_batch(task):
+        pass
+
+    return finalize_local_training(task)
 
 
 if __name__ == "__main__":

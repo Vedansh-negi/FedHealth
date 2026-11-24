@@ -6,7 +6,13 @@ import numpy as np
 from psycopg2.extras import Json
 
 from database.federated_db import get_federated_connection
-from ml.local_training import train_local_model
+from ml.local_training import (
+    finalize_local_training,
+    prepare_local_training,
+    train_one_local_batch,
+)
+from os_layer.process_manager import save_process_logs
+from os_layer.scheduler import round_robin
 from ml.model_config import (
     FEATURE_COLUMNS,
     MODEL_VERSION,
@@ -144,17 +150,61 @@ def run_federated_round():
         if previous_version:
             print(f"Previous global version: {previous_version}")
 
-        results = []
+        # Prepare each hospital's local task from the SAME global model.
+        # One Round Robin time quantum represents one local mini-batch update.
+        local_tasks = {}
+        scheduler_jobs = []
         for hospital_id in HOSPITAL_IDS:
-            print(f"\nTraining Hospital {hospital_id} from the same global model...")
-            result = train_local_model(
+            print(f"\nPreparing Hospital {hospital_id} for Round Robin scheduling...")
+            task = prepare_local_training(
                 hospital_id=hospital_id,
                 round_number=round_number,
                 initial_weights=initial_weights,
                 initial_bias=initial_bias,
             )
+            local_tasks[hospital_id] = task
+            scheduler_jobs.append({
+                "pid": f"H{hospital_id}",
+                "hospital_id": hospital_id,
+                "arrival_time": 0,
+                "burst_time": task["total_batches"],
+            })
+
+        scheduled_jobs, execution_order = round_robin(
+            scheduler_jobs,
+            time_quantum=1,
+        )
+        print("\nRound Robin local-training execution order:")
+        batch_numbers = {}
+        timeline_labels = []
+        for item in execution_order:
+            pid = item["pid"]
+            batch_numbers[pid] = batch_numbers.get(pid, 0) + 1
+            timeline_labels.append(f"{pid}[batch {batch_numbers[pid]}]")
+        print(" -> ".join(timeline_labels))
+
+        # Execute exactly one mini-batch for the hospital selected by RR.
+        for slot in execution_order:
+            hospital_id = int(slot["pid"][1:])
+            did_work = train_one_local_batch(local_tasks[hospital_id])
+            if not did_work:
+                raise RuntimeError(
+                    f"Round Robin scheduled completed task H{hospital_id}."
+                )
+
+        results = []
+        for hospital_id in HOSPITAL_IDS:
+            result = finalize_local_training(local_tasks[hospital_id])
             validate_update(result, expected_fingerprint)
             results.append(result)
+
+        # Store scheduler metrics as mini-batch units, not seconds.
+        save_process_logs(
+            scheduled_jobs,
+            scheduling_algorithm="Round Robin",
+            scheduling_unit="mini_batches",
+            time_quantum=1,
+        )
 
         global_weights, global_bias = aggregate_models(results)
         new_version = f"{MODEL_VERSION}-fedavg-round-{round_number}"

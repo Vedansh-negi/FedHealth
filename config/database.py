@@ -4,7 +4,6 @@ Copy ``.env.example`` to ``.env`` (project root) and adjust. The values
 below are only local-development defaults; no password is hardcoded.
 """
 
-
 import os
 
 from config.env import load_env

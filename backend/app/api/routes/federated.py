@@ -24,12 +24,9 @@ STALE_AFTER_MINUTES = 30
 
 
 def _run_training_job(user_id, hospital_id):
-    """Background job: one FedAvg round followed by evaluation."""
-    if not _training_lock.acquire(blocking=False):
-        return
+    """Run one protected federated training job."""
 
     try:
-        # Imported lazily: loads numpy / pandas / scikit-learn only when needed.
         from ml.federated_learning import run_federated_round
         from ml.evaluate_global_model import evaluate_global_model
 
@@ -40,11 +37,25 @@ def _run_training_job(user_id, hospital_id):
         except Exception:
             logger.exception("Evaluation after training failed")
 
-        log_audit(hospital_id, user_id, "FEDERATED_ROUND_COMPLETED", "federated_round")
+        log_audit(
+            hospital_id,
+            user_id,
+            "FEDERATED_ROUND_COMPLETED",
+            "federated_round"
+        )
 
     except Exception:
         logger.exception("Federated training failed")
-        log_audit(hospital_id, user_id, "FEDERATED_ROUND_FAILED", "federated_round")
+
+        try:
+            log_audit(
+                hospital_id,
+                user_id,
+                "FEDERATED_ROUND_FAILED",
+                "federated_round"
+            )
+        except Exception:
+            logger.exception("Failed to write training failure audit")
 
     finally:
         _training_lock.release()
@@ -146,15 +157,17 @@ def federated_summary(limit: int = Query(10, ge=1, le=50)):
 @router.post("/run", status_code=202)
 def start_federated_round(
     background_tasks: BackgroundTasks,
-    current_user: dict = Depends(require_roles(ADMIN))
+    current_user: dict = Depends(require_roles(ADMIN, DOCTOR))
 ):
-    """Start one federated round in the background (admin only)."""
-    if _training_lock.locked():
+    """Start one protected federated training round."""
+
+    if not _training_lock.acquire(blocking=False):
         raise HTTPException(
             status_code=409,
             detail="A training round is already in progress"
         )
 
+    lock_transferred = False
     connection = None
 
     try:
@@ -163,34 +176,45 @@ def start_federated_round(
         with connection.cursor(cursor_factory=RealDictCursor) as cursor:
             running = _running_round(cursor)
 
+        if running:
+            raise HTTPException(
+                status_code=409,
+                detail="A training round is already in progress"
+            )
+
+        log_audit(
+            current_user["hospital_id"],
+            current_user["user_id"],
+            "FEDERATED_ROUND_STARTED",
+            "federated_round"
+        )
+
+        background_tasks.add_task(
+            _run_training_job,
+            current_user["user_id"],
+            current_user["hospital_id"]
+        )
+
+        lock_transferred = True
+
+        return {
+            "message": "Federated training round started"
+        }
+
+    except HTTPException:
+        raise
+
     except Exception:
-        logger.exception("Could not check running rounds")
+        logger.exception("Could not start federated training")
+
         raise HTTPException(
             status_code=503,
-            detail="Federated database is unavailable"
+            detail="Unable to start federated training"
         )
 
     finally:
         if connection:
             connection.close()
 
-    if running:
-        raise HTTPException(
-            status_code=409,
-            detail="A training round is already in progress"
-        )
-
-    log_audit(
-        current_user["hospital_id"],
-        current_user["user_id"],
-        "FEDERATED_ROUND_STARTED",
-        "federated_round"
-    )
-
-    background_tasks.add_task(
-        _run_training_job,
-        current_user["user_id"],
-        current_user["hospital_id"]
-    )
-
-    return {"message": "Federated training round started"}
+        if not lock_transferred:
+            _training_lock.release()

@@ -24,7 +24,7 @@ const formatTime = (value) =>
 
 export default function FederatedLearning() {
   const user = getSavedUser()
-  const isAdmin = user?.role === 'admin'
+  const canRunTraining = ['admin', 'doctor'].includes(user?.role)
 
   const [summary, setSummary] = useState(null)
   const [hospitals, setHospitals] = useState([])
@@ -187,7 +187,7 @@ export default function FederatedLearning() {
           </p>
         </div>
 
-        {isAdmin ? (
+        {canRunTraining ? (
           <button
             type="button"
             className="primary-button"

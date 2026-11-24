@@ -279,6 +279,10 @@ export const getOSHistory = (limit = 20) => {
   return fetchAPI(`/api/os/history?limit=${limit}`)
 }
 
+export const getOSProcesses = (limit = 50) => {
+  return fetchAPI(`/api/os/processes?limit=${limit}`)
+}
+
 // ================= FEDERATED LEARNING API =================
 
 export const getFederatedSummary = (limit = 10) => {

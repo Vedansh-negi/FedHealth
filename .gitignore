@@ -1,11 +1,21 @@
 
-# Python
+# Python virtual environments
 venv/
+.venv/
+backend/venv/
+
+# Python cache files
 __pycache__/
 *.py[cod]
+
+# Environment variables and secrets
 .env
 .env.*
 !.env.example
+
+# Frontend dependencies and build files
+frontend/node_modules/
+frontend/dist/
 
 # Data and model artifacts
 *.csv
@@ -13,6 +23,12 @@ __pycache__/
 *.pkl
 *.pickle
 
-# Logs and local configuration
+# Logs
 logs/
+*.log
+
+# macOS files
 .DS_Store
+
+# VS Code local settings
+.vscode/

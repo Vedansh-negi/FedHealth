@@ -1,4 +1,4 @@
-
+import { getHospitals } from '../services/api'
 import { useEffect, useState } from 'react'
 import { Building2, RefreshCw, Users, Database } from 'lucide-react'
 
@@ -9,25 +9,21 @@ function Hospitals() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  async function loadHospitals() {
-    setLoading(true)
-    setError('')
 
-    try {
-      const response = await fetch(API_URL)
+async function loadHospitals() {
+  setLoading(true)
+  setError('')
 
-      if (!response.ok) {
-        throw new Error('Hospitals data load nahi ho paya.')
-      }
-
-      const data = await response.json()
-      setHospitals(data.hospitals || [])
-    } catch {
-      setError('Backend se connection nahi ho paya. Backend server check karo.')
-    } finally {
-      setLoading(false)
-    }
+  try {
+    const data = await getHospitals()
+    setHospitals(data.hospitals || [])
+  } catch (err) {
+    setError(err.message || 'Hospitals data load nahi ho paya.')
+  } finally {
+    setLoading(false)
   }
+}
+
 
   useEffect(() => {
     loadHospitals()

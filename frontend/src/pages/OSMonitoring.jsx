@@ -8,12 +8,14 @@ import {
   RefreshCw,
 } from 'lucide-react'
 
-import { getOSMetrics } from '../services/api'
+import { getOSMetrics, getOSProcesses } from '../services/api'
 
 export default function OSMonitoring() {
   const [resources, setResources] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [processes, setProcesses] = useState([])
+  const [processError, setProcessError] = useState('')
 
   const loadResources = useCallback(async () => {
     setLoading(true)
@@ -27,6 +29,13 @@ export default function OSMonitoring() {
       }
 
       setResources(data.resources ?? data)
+      try {
+        const processData = await getOSProcesses(50)
+        setProcesses(processData.processes ?? [])
+        setProcessError('')
+      } catch (processErr) {
+        setProcessError(processErr.message || 'Unable to load scheduler history')
+      }
     } catch (err) {
       setError(
         err.message || 'OS monitoring data load nahi hua'
@@ -164,6 +173,59 @@ export default function OSMonitoring() {
               Values reflect the latest snapshot collected from
               this machine. Refresh to collect a new snapshot.
             </p>
+          </section>
+
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <h3>Round Robin Training Jobs</h3>
+                <p className="muted">
+                  Hospital local-training tasks scheduled during federated rounds.
+                </p>
+              </div>
+              <Cpu size={21} />
+            </div>
+
+            {processError && <p className="muted">{processError}</p>}
+
+            {processes.length === 0 ? (
+              <p className="data-note">
+                No scheduled training jobs recorded yet. Start a federated round to populate this table.
+              </p>
+            ) : (
+              <div className="patients-table-wrapper">
+                <table className="patients-table">
+                  <thead>
+                    <tr>
+                      <th>Hospital</th>
+                      <th>Task</th>
+                      <th>Algorithm</th>
+                      <th>Burst</th>
+                      <th>Waiting</th>
+                      <th>Turnaround</th>
+                      <th>Response</th>
+                      <th>Unit</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {processes.map((process) => (
+                      <tr key={process.process_log_id}>
+                        <td>Hospital {process.hospital_id}</td>
+                        <td>{process.process_name}</td>
+                        <td>{process.scheduling_algorithm}</td>
+                        <td>{process.burst_time_units ?? '—'}</td>
+                        <td>{process.waiting_time_units ?? '—'}</td>
+                        <td>{process.turnaround_time_units ?? '—'}</td>
+                        <td>{process.response_time_units ?? '—'}</td>
+                        <td>{process.scheduling_unit ?? 'seconds'}</td>
+                        <td>{process.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </>
       )}
