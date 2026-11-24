@@ -100,7 +100,7 @@ def os_processes(limit: int = Query(50, ge=1, le=500)):
             cursor.execute(
                 """
                 SELECT
-                    process_log_id,
+                    process_id,
                     hospital_id,
                     process_name,
                     scheduling_algorithm,
@@ -113,7 +113,7 @@ def os_processes(limit: int = Query(50, ge=1, le=500)):
                     status,
                     created_at
                 FROM os_process_logs
-                ORDER BY created_at DESC, process_log_id DESC
+                ORDER BY created_at DESC, process_id DESC
                 LIMIT %s
                 """,
                 (limit,)

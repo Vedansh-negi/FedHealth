@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:16
+    container_name: fedhealth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vedanshnegi
+      POSTGRES_PASSWORD: ${DOCKER_DB_PASSWORD:?DOCKER_DB_PASSWORD is required}
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - fedhealth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vedanshnegi -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: fedhealth-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      FEDHEALTH_DB_HOST: db
+      FEDHEALTH_DB_PORT: 5432
+      FEDHEALTH_DB_USER: vedanshnegi
+      FEDHEALTH_DB_PASSWORD: ${DOCKER_DB_PASSWORD}
+      FEDHEALTH_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./config:/app/config
+      - ./database:/app/database
+      - ./ml:/app/ml
+      - ./os_layer:/app/os_layer
+      - ./scripts:/app/scripts
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fedhealth-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  fedhealth_postgres_data:
